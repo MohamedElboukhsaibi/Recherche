@@ -1,0 +1,1549 @@
+---
+output: 
+  pdf_document:
+    toc: false             # Active la table des matières
+    toc_depth: 3          # Profondeur des niveaux de la table des matières
+    number_sections: true # Numérotation des sections
+geometry : a4paper, top=2cm, bottom=2cm, left=2cm, right=2cm
+header-includes : 
+  - \usepackage{tikz}
+  - \usepackage{caption}
+  - \usepackage{setspace}
+  - \renewcommand{\contentsname}{Table des matières}
+  
+
+---
+
+\onehalfspacing
+
+```{r setup, echo = FALSE, warning=FALSE} 
+knitr::opts_chunk$set(echo = FALSE,
+                      message = FALSE, 
+                      warning = FALSE) 
+``` 
+
+```{r, echo = FALSE, warning=FALSE}
+# Charger les bibliothèques nécessaires
+library(ggplot2)
+library(gridExtra)
+library(png)
+library(grid)
+# Générer la structure visuelle
+
+# Logos
+universite_logo <- "Logo_univ_Tours.png"
+
+```
+
+\begin{titlepage}
+    \centering
+    \vspace*{2cm}
+
+    {\Huge \textbf{Master Économiste d'Entreprise}}
+
+    \vspace{2cm}
+
+    \includegraphics[width=0.6\textwidth]{Logo_univ_Tours.png}
+
+    \vspace{2cm}
+
+    {\LARGE \textbf{Régression par différences d'observations}}
+
+    \vspace{3cm}
+
+    {\Large \textbf{Gerart Jarod et El boukhsaibi Mohamed}}
+
+    \vspace{3cm}
+    
+    {\Large \textbf{Nous tenons à exprimer notre sincère reconnaissance à Monsieur Bousquet Alain, dont l’érudition, la rigueur intellectuelle et la grande disponibilité ont constitué un soutien précieux tout au long de ce travail. Son expertise remarquable a largement enrichi notre réflexion et contribué à la qualité de cette étude.}}
+    
+    \vfill
+
+
+
+\end{titlepage}
+
+
+
+
+\newpage
+
+\tableofcontents
+
+\newpage
+
+
+
+
+
+# Introduction
+
+La méthode de régression par différence d'observations repose sur une intuition simple et accessible, même pour quelqu’un sans connaissances préalables en économétrie. Lorsqu’on observe un nuage de points représentant une relation entre deux variables, une première approche intuitive pour estimer cette relation consisterait à tracer une droite reliant deux points quelconques du nuage. La pente de cette droite reflète une estimation naïve de la relation entre les variables. Bien que cette méthode ne repose pas directement sur des bases économétriques, elle capture l’idée fondamentale de chercher une relation linéaire entre deux variables, ce qui rend la démarche particulièrement intuitive, et fait d'elle un estimateur sans bais de la relation entre les deux variables.  
+Dans un cadre économétrique, cette intuition peut être formalisée à travers des régressions linéaires. Si l’on part d’une équation simple : $$Y_t = \alpha + \beta X_t + \varepsilon_t$$
+ou d’une équation exprimée en différences premières : $$\Delta Y_t = \beta \Delta X_t + \Delta \varepsilon_t$$
+les résultats obtenus par les deux formulations convergent vers les mêmes estimations pour $\beta$, sous des hypothèses classiques telles que l’absence de corrélation entre les erreurs et la variable explicative.  
+
+Cette approche illustre la puissance et la simplicité de la méthode par différence d’observations : elle offre une interprétation intuitive de la régression linéaire en partant d’une démarche spontanée mais tout aussi efficace que les methodes classiques d'estimations. 
+
+Il existe certains cas dans la littérature où l'on procède par différence d'observations. C'est par exemple le cas pour l'estimateur de Theil-Sen, dans l'économétrie des panels avec le modèle within, ou bien encore plus récemment avec certains articles comme *Estimation with Pairwise Observations* (F.Chan & L.Matyas, 2024) ou encore *Pairwise Difference Regression: A Machine Learning Meta-algorithm for Improved Prediction and Uncertainty Quantification in Chemical Search*.
+
+
+Cependant, il est important de tenir compte d'une chose en particulier :
+
+Reprenons une régression linéaire classique : $$Y_i = \alpha + \beta X_i + \varepsilon_i$$
+
+Notons $Y_{ij}$ qui équivaut à la différence entre l'observation $i$ et l'observation $j$, alors $$Y_{ij} = Y_i - Y_j = \alpha + \beta X_i + \varepsilon_i - \alpha - \beta X_j - \varepsilon_j = \beta (X_i - X_j) + (\varepsilon_i - \varepsilon_j) = \beta X_{ij} + \varepsilon_{ij}$$
+
+Les hypothèses classiques sur les résidus sont qu'ils doivent être indépendants (c'est à dire $cov(\varepsilon_i,\varepsilon_j) = 0$), avoir la même variance ($var(\varepsilon_i) = \sigma^2$), et être de moyenne nulle ($E(\varepsilon_i) = 0$ . 
+
+Cependant, l'hypothèse concernant l'indépendance des résidus n'est pas respectée ici. En effet, $var(\varepsilon_i) + var(\varepsilon_j) = \sigma^2 + \sigma^2 = 2\sigma^2$ . 
+
+De plus, $Cov(\varepsilon_{ij},\varepsilon_{ik}) = Cov(\varepsilon_i - \varepsilon_j, \varepsilon_i - \varepsilon_k) = \sigma^2 - 0 - 0 + 0 = \sigma^2$
+
+et $Cov(\varepsilon_{ji},\varepsilon_{ik}) = Cov(\varepsilon_j - \varepsilon_i, \varepsilon_i - \varepsilon_k) = - \sigma^2 - 0 - 0 + 0 = - \sigma^2$ .
+
+Cela va avoir un impact sur le degré de liberté des régressions. Et donc certaines variable pourraient apparaître comme significative alors que cela serait seulement le résultat du bruit dûes au fait que les p-values seraient très faibles.
+
+
+# Les MCO vues comme des différences d'observations
+
+Les moindres carrés ordinaires (MCO) représentent l'une des méthodes de régression les plus répandues en statistique. Utilisés principalement pour ajuster un modèle linéaire, les MCO fournissent des estimations optimales des paramètres $\alpha$ et $\beta$ d'un modèle de régression $$ y_i = \alpha + \beta x_i + \epsilon_i $$ où $y_i$ représente la variable dépendante et $x_i$ la variable explicative, $e_i$ étant un terme d'erreur aléatoire. Cette méthode est largement utilisée en raison de sa simplicité, de ses propriétés asymptotiques favorables (l'estimateur MCO est sans biais, et asymptotiquement normal), et de son interprétation intuitive.
+
+Il existe différentes manières qui nous permettent d'estimer $\beta$, la plus classique étant la méthode des Moindres Carrés Ordinaire. 
+
+L'estimateur de $\beta$ via les MCO est : $$\hat\beta = \frac {Cov(x,y)}{Var(X)}$$ 
+
+qui peut se réécrire comme ceci : $$\hat\beta =  \frac{\sum_{i=1}^n (x_i - \overline{x})(y_i-\overline{y})} {\sum_{i=1}^n (xi-\overline{x})^2}$$
+
+Par un simple jeu de réécriture, on obtient de manière équivalente : $$\hat{\beta}=\frac{\sum_{i=1}^{N}~\frac{(y_i-\bar{y})}{(x_i-\bar{x})}(x_i-\bar{x})^2}{\sum_{i=1}^{N}~(x_i-\bar{x})^2}$$
+
+De cette manière, on peut constater que $\hat\beta$ correspond à une moyenne pondérée des pentes élémentaires entre chaque point et le point moyen de l'échantillon.  
+  
+
+
+\vspace{1cm}
+\begin{center}
+\begin{tikzpicture}[scale=0.7]
+
+        % grid
+%        \draw [thin, gray!30] (0,0) grid (5,5);
+
+        % Draw axes
+        \draw [<->,thick] (0,10) node (yaxis) [above] {\normalsize $y$} |- (10,0) node (xaxis) [right] {\normalsize $x$};
+        % Coordinates 
+                \coordinate (a) at (3.5,5.5);
+        \coordinate (b) at (1,1);
+        \coordinate (c) at (2,4);
+        \coordinate (d) at (3,5);
+        \coordinate (e) at (4,8);
+        \coordinate (f) at (5,6);
+        \coordinate (g) at (6,9);
+%
+%        % Dashed lines
+%        \draw[dashed] (yaxis |- a) node[left] {$i$} -| (xaxis -| a) node[below] {$j-1$};
+%        \draw[dashed] (a |- b) -| (xaxis -| b) node[below] {$j$};
+%        \draw[dashed] (yaxis |- c) node[left] {$i+1$} -| (b -| c);
+%        \draw[dashed] (b |- d) -| (xaxis -| d) node[below] {$j+1$};
+
+        % red dots
+        \fill[orange] (a) circle (6pt);
+        \fill[gray] (b) circle (4pt);
+        \fill[gray] (c) circle (4pt);
+        \fill[gray] (d) circle (4pt);
+        \fill[gray] (e) circle (4pt);
+        \fill[gray] (f) circle (4pt);
+        \fill[gray] (g) circle (4pt);
+	\draw 
+	(b) -- (a)
+	(c) -- (a)
+	(d) -- (a)
+	(e) -- (a)
+	(f) -- (a)
+	(g) -- (a);
+\end{tikzpicture}
+\captionof*{Illustration}{MCO vus comme la moyenne pondérée des pentes élémentaires entre chaque point et le point moyen.}
+\end{center}
+
+\vspace{1cm} 
+
+On peut encore réécrire l'estimateur des MCO de la manière suivante : $$\hat\beta = {\sum_{i=1}^n b_iw_i}$$
+
+
+Avec $w_i$ = $\frac{(x_i-\bar{x})^2}{\sum_{i=1}^{N}~(x_i-\bar{x})^2}$ et $b_i$ = $\frac{(y_i-\bar{y})}{(x_i-\bar{x})}$ 
+
+Les $w_i$ représentant le poids de la pente entre chacuns des $x_i$ et $\bar{x}$, ou en d'autres termes, reflètent la contribution de chaque point à la variance totale de $x$.
+
+\newpage
+
+Plaçons nous maintenant dans le cas où l'on cherche à estimer la moyenne des pentes élémentaires entre toutes les paires de points. Dans ce cas, l'estimateur devient : 
+
+
+$$\hat{\beta}=\frac{\sum_{i=1}^{N-1} \sum_{j=i+1}^{N} ~{(x_i-x_j)}(y_i-y_j)}{\sum_{i=1}^{N-1} \sum_{j=i+1}^{N}~(x_i-x_j)^2}$$
+
+que l'on peut encore réécrire comme ceci : 
+
+
+$$\hat{\beta}=\frac{\sum_{i=1}^{N-1} \sum_{j=i+1}^{N} ~\frac{(y_i-y_j)}{(x_i-x_j)}(x_i-x_j)^2}{\sum_{i=1}^{N-1} \sum_{j=i+1}^{N}~(x_i-x_j)^2}$$
+
+
+ou bien encore :  $$ \hat\beta =  {\sum_{i=1}^{N-1} \sum_{j=i+1}^{N} b_{ij}w_{ij}} $$ 
+
+avec $b_{ij} = \frac {y_i - y_j} {x_i - x_j}$ et $w_{ij} = \frac {(x_i - x_j)²}  {\sum_{i=1}^{N-1} \sum_{j=i+1}^{N}~(x_i-x_j)^2}$
+
+
+\vspace{1cm}
+\begin{center}
+\begin{tikzpicture}[scale=0.7]
+
+        % grid
+%        \draw [thin, gray!30] (0,0) grid (5,5);
+
+        % Draw axes
+        \draw [<->,thick] (0,10) node (yaxis) [above] {\normalsize $y$} |- (10,0) node (xaxis) [right] {\normalsize $x$};
+        % Coordinates 
+       \coordinate (a) at (3.5,5.5);
+        \coordinate (b) at (1,1);
+        \coordinate (c) at (2,4);
+        \coordinate (d) at (3,5);
+        \coordinate (e) at (4,8);
+        \coordinate (f) at (5,6);
+        \coordinate (g) at (6,9);
+%
+%        % Dashed lines
+%        \draw[dashed] (yaxis |- a) node[left] {$i$} -| (xaxis -| a) node[below] {$j-1$};
+%        \draw[dashed] (a |- b) -| (xaxis -| b) node[below] {$j$};
+%        \draw[dashed] (yaxis |- c) node[left] {$i+1$} -| (b -| c);
+%        \draw[dashed] (b |- d) -| (xaxis -| d) node[below] {$j+1$};
+
+        % red dots
+        %\fill[orange] (a) circle (6pt);
+        \fill[gray] (b) circle (4pt);
+        \fill[gray] (c) circle (4pt);
+        \fill[gray] (d) circle (4pt);
+        \fill[gray] (e) circle (4pt);
+        \fill[gray] (f) circle (4pt);
+        \fill[gray] (g) circle (4pt);
+	\draw 
+	(b) -- (c)(b) -- (d)(b)-- (e) (b)-- (f)(b) -- (g)
+	(c) -- (d)(c)-- (e) (c)-- (f)(c) -- (g)
+	(d) -- (e)(d)-- (f) (d)-- (g)
+	(e) -- (f)(e)-- (g)
+	(f) -- (g);
+\end{tikzpicture}  
+\captionof*{Illustration}{MCO vus comme la moyenne pondérée des pentes élémentaires entre chaque paire point}
+\end{center}
+
+\vspace{1cm}
+
+\newpage
+
+Une autre méthode, à priori équivalente, serait de chercher à calculer la moyenne des pentes moyennes, ce qui revient à calculer la moyenne des pentes élémentaires d'un point $i$, puis de faire ça pour les N points du jeu de données et de faire la moyenne des moyennes. 
+
+
+On obtient donc l'estimateur $\hat\beta$ :
+
+$$\hat{\beta}=\sum_{i=1}^{N} \left(
+\frac
+{\sum_{j=1}^{N}\left((x_i-x_j)^2 \frac{(y_i-y_j)}{(x_i-x_j)} \right)}{\sum_{j=1}^{N}~(x_i-x_j)^2}
+\frac{\sum_{j=1}^{N}~(x_i-x_j)^2}{\sum_{i=1}^{N}\sum_{j=1}^{N}~(x_i-x_j)^2}
+\right)$$
+
+que l'on peut réécrire $$\hat{\beta}=\sum_{i=1}^{N}~b_{i\bullet}w_{i\bullet}$$
+
+avec $b_{i\bullet}= \frac{\sum_{j=1}^{N}\left((x_i-x_j)^2 \frac{(y_i-y_j)}{(x_i-x_j)} \right)}{\sum_{j=1}^{N}~(x_i-x_j)^2}$ et  $w_{i\bullet}=\frac{\sum_{j=1}^{N}~(x_i-x_j)^2}{\sum_{i=1}^{N}\sum_{j=1}^{N}~(x_i-x_j)^2}$
+
+
+Sous cette forme l'expression de $\hat{\beta}$ fait apparaitre l'estimateur MCO comme la moyenne pondérée des moyennes pondérées des pentes de chaque point par rapport à tous les autres points.
+
+
+\begin{center}
+\begin{tikzpicture}[scale=0.7]
+
+        % grid
+%        \draw [thin, gray!30] (0,0) grid (5,5);
+
+        % Draw axes
+        \draw [<->,thick] (0,10) node (yaxis) [above] {\normalsize $y$} |- (10,0) node (xaxis) [right] {\normalsize $x$};
+        % Coordinates 
+                \coordinate (a) at (3.5,5.5);
+        \coordinate (b) at (1,1);
+        \coordinate (c) at (2,4);
+        \coordinate (d) at (3,5);
+        \coordinate (e) at (4,8);
+        \coordinate (f) at (5,6);
+        \coordinate (g) at (6,9);
+%
+%        % Dashed lines
+%        \draw[dashed] (yaxis |- a) node[left] {$i$} -| (xaxis -| a) node[below] {$j-1$};
+%        \draw[dashed] (a |- b) -| (xaxis -| b) node[below] {$j$};
+%        \draw[dashed] (yaxis |- c) node[left] {$i+1$} -| (b -| c);
+%        \draw[dashed] (b |- d) -| (xaxis -| d) node[below] {$j+1$};
+
+        % red dots
+       % \fill[orange] (a) circle (6pt);
+        \fill[red] (b) circle (4pt);
+        \fill[gray] (c) circle (4pt);
+        \fill[gray] (d) circle (4pt);
+        \fill[gray] (e) circle (4pt);
+        \fill[gray] (f) circle (4pt);
+        \fill[gray] (g) circle (4pt);
+	\draw 
+	(b) -- (c)
+	(b) -- (d)
+	(b) -- (e)
+	(b) -- (f)
+	(b) -- (g);
+\end{tikzpicture}  
+\captionof*{Illustration}{MCO vus comme la moyenne des pentes moyennes}
+\end{center}
+
+
+
+
+# Cartographie des pentes élémentaires
+
+
+Raisonner par différence pourrait permettre de tester la non-linéarité d'un modèle.
+
+En effet, prenons un modèle linéaire de la forme : $y_i = \alpha + \beta x_i + \epsilon_i$
+
+On obtient : $y_i - y_j = \beta (x_i - x_j) + (\epsilon_i + \epsilon_j)$
+
+Ici, $x_i - x_j$ ne dépend que de $\beta$.
+
+Considérons maintenant le modèle non linéaire suivant : $y_i = \alpha + \beta x_i + \gamma x_i^2 + \epsilon_i$
+
+$y_i - y_j = (x_i - x_j) (\beta + \gamma (x_i+x_j)) + (\epsilon_i - \epsilon_j)$
+
+Dans ce cas-ci, $x_i - x_j$ ne dépend plus seulement de $\beta$, mais également de la somme entre $x_i$ et $x_j$.
+
+
+Les graphiques suivants ont été effectués via des données simulées, afin de montrer la représentation des $b_i w_i$ et des $b_{ij} w_{ij}$.
+
+
+## Cas linéaire
+
+Ce cas linéaire est présenté ainsi afin de faire la comparaison avec le cas non linéaire présenté dans le paragraphe suivant. Cette première étape du test de non linéarité consiste à évaluer les intervalles de confiance des pentes entre $x_i$ et  $\bar{x}$ et cela dans l'objectif de vérifier si les pentes restent cohérentes dans tout le jeu de données. Si le modèle est linéaire, on s'attend à ce que les pentes soient stables et similaires pour chaque point par rapport à la moyenne ou restant dans un intervalle de confiance défini. Si un pourcentage trop important de pentes se trouvent à l'éxtérieur de l'intervalle de confiance, alors l'hypothèse la plus plausible serait de traiter la relation comme étant non linéaire. Avec cet intervalle de confiance, l’objectif est de vérifier si la pente globale $\beta$ explique bien la majorité des pentes locales de la relation. En d'autres termes, on cherche à confirmer que $\beta$ est une description cohérente et fiable de la relation entre $x$ et $y$ pour l’ensemble des données.
+
+L'intervalle de confiance se présente de la manière suivante : 
+
+$$b_{i} w_{i}~\in~\beta \frac{(x_i-\bar{x})^2}{\sum_{i=1}^{N} ~(x_i-\bar{x})^2}~\pm ~ t~ \sigma_e ~   \frac{(x_i-\bar{x})}{\sum_{i=1}^{N}(x_i-\bar{x})^2}$$
+Le deuxième cas consiste à construire un intervalle de confiance des pentes entre chaque paire de points. L'intervalle de confiance considéré se présente donc comme ceci : 
+$$b_{ij} w_{ij}~\in~\beta \frac{(x_i-x_j)^2}{\sum_{i=1}^{N-1} \sum_{j=i+1}^{N}~(x_i-x_j)^2}~\pm ~ t~\sqrt(2)~ \sigma_e ~   \frac{(x_i-x_j)}{\sum_{i=1}^{N-1}\sum_{j=i+1}^{N}~(x_i-x_j)^2}$$
+
+```{r, echo = FALSE, warning=FALSE}
+library(reshape)
+library(plot3D)
+library(ggplot2)
+library(ggjoy)
+
+
+N=400
+Nmat=N*(N-1)/2
+x<-runif(N,0,50) #random numbers from uniform distribution
+u<-rnorm(N,0,250) #random numbers from normal distribution
+y<- -50+10*x+u
+
+
+mydata<-data.frame(cbind(x,y))
+ols<-lm(y~x,data=mydata)
+
+
+Wbrutij=matrix(nrow=N,ncol=N)
+BETAij=matrix(nrow=N,ncol=N)
+Position=matrix(nrow=N,ncol=N)
+diffx=matrix (nrow=N,ncol=N)
+diffy=matrix(nrow=N,ncol=N)
+
+
+  for(i in 1:(N-1))
+  {
+  for(j in (i+1):(N))
+  {
+  Wbrutij[i,j]=(x[i]-x[j])^2
+  BETAij[i,j]=(y[i]-y[j])/(x[i]-x[j])
+  diffx[i,j] = x[i]-x[j]
+  diffy[i,j] = y[i]-y[j]
+  Position[i,j]=x[i]
+  }
+  }
+  
+VECWij=as.numeric(na.omit(matrix(t(Wbrutij),(N^2),1)))
+VECBij=as.numeric(na.omit(matrix(t(BETAij),(N^2),1)))
+num_diffx=as.numeric(na.omit(matrix(t(diffx),(N^2),1)))
+num_diffy=as.numeric(na.omit(matrix(t(diffy),(N^2),1)))
+
+TotalW=sum(VECWij)
+VECBtildeij=(VECBij*VECWij)/TotalW
+betaOLS=sum(VECBtildeij)
+
+Distance=sqrt(VECWij)
+Position=as.numeric(na.omit(matrix(t(Position),(N^2),1)))
+
+
+
+
+diffxy <- data.frame(cbind(num_diffx,num_diffy)) ## df des xi-xj et yi-yj
+ols_2<-lm(num_diffy~num_diffx,data=diffxy) ## regression yi-yj = xi-xj
+
+ols_3 <- lm(num_diffy~num_diffx - 1,data=diffxy)
+
+
+toto=(Position-mean(Position))^2
+titi=betaOLS*toto/sum(toto)
+#plot(Position,titi,pch=16,cex=1,col="green")
+
+xd=Distance
+vare=sigma(ols)
+du=(betaOLS*xd^2+1.96*xd*sqrt(2)*vare)/TotalW
+dl=(betaOLS*xd^2-1.96*xd*sqrt(2)*vare)/TotalW
+
+#-------------------------------------------------------------------------
+# cacul des BETA i slope with respect to center of gravity
+
+BETAi=(y-mean(y))/(x-mean(x))
+WBRUTi=(x-mean(x))^2
+TotalWBRUTi=sum(WBRUTi)
+VECBETAi=(BETAi*WBRUTi)/TotalWBRUTi
+lu=(betaOLS*(x-mean(x))^2+1.96*(x-mean(x))*vare)/TotalWBRUTi
+ll=(betaOLS*(x-mean(x))^2-1.96*(x-mean(x))*vare)/TotalWBRUTi
+minscale=min(rbind(lu,ll))
+maxscale=max(rbind(lu,ll))
+
+
+
+```
+
+
+```{r, echo = FALSE, warning=FALSE}
+par(mfrow=c(1,4))
+plot(x,y,pch=16,cex=1,col="orange")
+abline(ols,col="green",lwd=3)
+
+plot(num_diffx,num_diffy,pch=16,cex=0.1,col="orange",main = "")
+abline(ols_3,col="green",lwd=2)
+
+#plot(Position,VECBtildeij,pch=16,cex=0.2,col="red")
+#points(Position,titi,type="p",cex=0.75,col="green")
+
+plot(x,VECBETAi,pch=16,cex=0.75,col="red",ylim=c(minscale,maxscale))
+points(x,lu,type="p",cex=0.75,col="green",pch=16)
+points(x,ll,type="p",cex=0.75,col="green",pch=16)
+
+plot(Distance,VECBtildeij,pch=16,cex=0.2,col="red",xlab="x")
+points(Distance,du,type="p",cex=0.75,col="green",pch=16)
+points(Distance,dl,type="p",cex=0.75,col="green",pch=16)
+
+```
+
+
+
+
+```{r,echo=FALSE,warning=FALSE,fig.cap="Distribution des Beta dans le cas linéaire"}
+
+RES=matrix(nrow=Nmat,ncol=1)
+RES[,1]=VECBtildeij
+
+Bidon<-data.frame('myvar'=RES[,1])
+ggplot(data=Bidon, aes(Bidon$myvar)) + 
+  geom_histogram(aes(y =..density..), 
+                 col="red", 
+                 fill="green", 
+                 alpha =0.2,
+                 addDensity=TRUE) + 
+  geom_density(col=2) + 
+  labs(title="Histogram for beta") +
+  labs(x="beta", y="Count")
+```
+
+Le premier graphique représente le nuage de points avec la droite de régression estimée via les MCO. \newline
+Le deuxième graphique représente le nuage de points des $y_i-y_j$ en fonction des $x_i-x_j$ ainsi que la droite estimée par les MCO avec les différences d'observations. \newline
+Le troisième graphique représente les $b_i w_i$ en ordonnée et les $x_i - \bar{x}$ en abscisse. \newline
+Le quatrième graphique représente les $b_{i_j} w_{i_j}$ en ordonnée et les $x_i - x_j$ en abscisse.
+
+
+
+La cartographie des pentes et de leurs intervalles de confiance dans le cas d'une relation linéaire serviront de comparatif pour détecter plus aisément la présence de non linéarité dans le cas suivant. La figure ci-dessus démontre que la majeure partie des pentes entre chaque $x_i$ et $\bar{x}$ se situent au sein de l'intervalle de confiance et se répartissent de façon assez uniforme.
+La cartographie des pentes entre chaque paire de points ainsi que leurs intervalles de confiance montrent également une repartition uniforme des points. Cette uniformité dans la reparition des points de chaque cartographie permet d'émettre une hypothèse concrète de linéarité entre $x$ et $y$. 
+
+## Cas non linéaire
+
+
+```{r, echo = FALSE, warning=FALSE}
+N=400
+Nmat=N*(N-1)/2
+x<-runif(N,0,50) #random numbers from uniform distribution
+u<-rnorm(N,0,250) #random numbers from normal distribution
+y <- 0+1000*x-40*sin(x)+u*x^2
+
+
+mydata<-data.frame(cbind(x,y))
+ols<-lm(y~x,data=mydata)
+
+
+Wbrutij=matrix(nrow=N,ncol=N)
+BETAij=matrix(nrow=N,ncol=N)
+Position=matrix(nrow=N,ncol=N)
+diffx=matrix (nrow=N,ncol=N)
+diffy=matrix(nrow=N,ncol=N)
+
+
+  for(i in 1:(N-1))
+  {
+  for(j in (i+1):(N))
+  {
+  Wbrutij[i,j]=(x[i]-x[j])^2
+  BETAij[i,j]=(y[i]-y[j])/(x[i]-x[j])
+  diffx[i,j] = x[i]-x[j]
+  diffy[i,j] = y[i]-y[j]
+  Position[i,j]=x[i]
+  }
+  }
+  
+VECWij=as.numeric(na.omit(matrix(t(Wbrutij),(N^2),1)))
+VECBij=as.numeric(na.omit(matrix(t(BETAij),(N^2),1)))
+num_diffx=as.numeric(na.omit(matrix(t(diffx),(N^2),1)))
+num_diffy=as.numeric(na.omit(matrix(t(diffy),(N^2),1)))
+
+TotalW=sum(VECWij)
+VECBtildeij=(VECBij*VECWij)/TotalW
+betaOLS=sum(VECBtildeij)
+
+Distance=sqrt(VECWij)
+Position=as.numeric(na.omit(matrix(t(Position),(N^2),1)))
+
+
+
+
+diffxy <- data.frame(cbind(num_diffx,num_diffy)) ## df des xi-xj et yi-yj
+ols_2<-lm(num_diffy~num_diffx,data=diffxy) ## regression yi-yj = xi-xj
+
+ols_3 <- lm(num_diffy~num_diffx - 1,data=diffxy)
+
+
+toto=(Position-mean(Position))^2
+titi=betaOLS*toto/sum(toto)
+#plot(Position,titi,pch=16,cex=1,col="green")
+
+xd=Distance
+vare=sigma(ols)
+du=(betaOLS*xd^2+1.96*xd*sqrt(2)*vare)/TotalW
+dl=(betaOLS*xd^2-1.96*xd*sqrt(2)*vare)/TotalW
+
+#-------------------------------------------------------------------------
+# cacul des BETA i slope with respect to center of gravity
+
+BETAi=(y-mean(y))/(x-mean(x))
+WBRUTi=(x-mean(x))^2
+TotalWBRUTi=sum(WBRUTi)
+VECBETAi=(BETAi*WBRUTi)/TotalWBRUTi
+lu=(betaOLS*(x-mean(x))^2+1.96*(x-mean(x))*vare)/TotalWBRUTi
+ll=(betaOLS*(x-mean(x))^2-1.96*(x-mean(x))*vare)/TotalWBRUTi
+minscale=min(rbind(lu,ll))
+maxscale=max(rbind(lu,ll))
+```
+
+
+
+```{r, echo = FALSE, warning=FALSE}
+par(mfrow=c(1,4))
+plot(x,y,pch=16,cex=1,col="orange")
+abline(ols,col="green",lwd=3)
+
+plot(num_diffx,num_diffy,pch=16,cex=0.1,col="orange",main = "")
+abline(ols_3,col="green",lwd=2)
+
+#plot(Position,VECBtildeij,pch=16,cex=0.2,col="red")
+#points(Position,titi,type="p",cex=0.75,col="green")
+
+plot(x,VECBETAi,pch=16,cex=0.75,col="red",ylim=c(minscale,maxscale))
+points(x,lu,type="p",cex=0.75,col="green",pch=16)
+points(x,ll,type="p",cex=0.75,col="green",pch=16)
+
+plot(Distance,VECBtildeij,pch=16,cex=0.2,col="red",xlab="x")
+points(Distance,du,type="p",cex=0.75,col="green",pch=16)
+points(Distance,dl,type="p",cex=0.75,col="green",pch=16)
+
+```
+
+
+```{r,echo=FALSE,warning=FALSE,fig.cap="Distribution des Beta dans le cas non-linéaire"}
+
+RES=matrix(nrow=Nmat,ncol=1)
+RES[,1]=VECBtildeij
+
+Bidon<-data.frame('myvar'=RES[,1])
+ggplot(data=Bidon, aes(Bidon$myvar)) + 
+  geom_histogram(aes(y =..density..), 
+                 col="red", 
+                 fill="green", 
+                 alpha =0.2,
+                 addDensity=TRUE) + 
+  geom_density(col=2) + 
+  labs(title="Histogram for beta") +
+  labs(x="beta", y="Count")
+```
+
+Sur un jeu de données basé sur une relation non linéaire, on s'aperçoit que les cartographies diffèrent du premier cas. Le troisème graphique met en avant la présence d'un plus grand nombre de points en dehors de l'intervalle de confiance. Au delà du fait que la répartition des points fait preuve d'un manque d'uniformité manifeste, le dernier graphique expose la formation de stries, ce qui nous amène à émettre l'hypothèse que la relation entre les deux variables dans ce cas de figure n'est pas linéaire. 
+
+## Cas non linéaire
+
+
+```{r, echo = FALSE, warning=FALSE}
+N=400
+Nmat=N*(N-1)/2
+x<-runif(N,0,50) #random numbers from uniform distribution
+u<-rnorm(N,0,250) #random numbers from normal distribution
+y <- 2*x + 0.5*x^2 + 0.1*u*x
+
+
+mydata<-data.frame(cbind(x,y))
+ols<-lm(y~x,data=mydata)
+
+
+Wbrutij=matrix(nrow=N,ncol=N)
+BETAij=matrix(nrow=N,ncol=N)
+Position=matrix(nrow=N,ncol=N)
+diffx=matrix (nrow=N,ncol=N)
+diffy=matrix(nrow=N,ncol=N)
+
+
+  for(i in 1:(N-1))
+  {
+  for(j in (i+1):(N))
+  {
+  Wbrutij[i,j]=(x[i]-x[j])^2
+  BETAij[i,j]=(y[i]-y[j])/(x[i]-x[j])
+  diffx[i,j] = x[i]-x[j]
+  diffy[i,j] = y[i]-y[j]
+  Position[i,j]=x[i]
+  }
+  }
+  
+VECWij=as.numeric(na.omit(matrix(t(Wbrutij),(N^2),1)))
+VECBij=as.numeric(na.omit(matrix(t(BETAij),(N^2),1)))
+num_diffx=as.numeric(na.omit(matrix(t(diffx),(N^2),1)))
+num_diffy=as.numeric(na.omit(matrix(t(diffy),(N^2),1)))
+
+TotalW=sum(VECWij)
+VECBtildeij=(VECBij*VECWij)/TotalW
+betaOLS=sum(VECBtildeij)
+
+Distance=sqrt(VECWij)
+Position=as.numeric(na.omit(matrix(t(Position),(N^2),1)))
+
+
+
+
+diffxy <- data.frame(cbind(num_diffx,num_diffy)) ## df des xi-xj et yi-yj
+ols_2<-lm(num_diffy~num_diffx,data=diffxy) ## regression yi-yj = xi-xj
+
+ols_3 <- lm(num_diffy~num_diffx - 1,data=diffxy)
+
+
+toto=(Position-mean(Position))^2
+titi=betaOLS*toto/sum(toto)
+#plot(Position,titi,pch=16,cex=1,col="green")
+
+xd=Distance
+vare=sigma(ols)
+du=(betaOLS*xd^2+1.96*xd*sqrt(2)*vare)/TotalW
+dl=(betaOLS*xd^2-1.96*xd*sqrt(2)*vare)/TotalW
+
+#-------------------------------------------------------------------------
+# cacul des BETA i slope with respect to center of gravity
+
+BETAi=(y-mean(y))/(x-mean(x))
+WBRUTi=(x-mean(x))^2
+TotalWBRUTi=sum(WBRUTi)
+VECBETAi=(BETAi*WBRUTi)/TotalWBRUTi
+lu=(betaOLS*(x-mean(x))^2+1.96*(x-mean(x))*vare)/TotalWBRUTi
+ll=(betaOLS*(x-mean(x))^2-1.96*(x-mean(x))*vare)/TotalWBRUTi
+minscale=min(rbind(lu,ll))
+maxscale=max(rbind(lu,ll))
+```
+
+
+
+```{r, echo = FALSE, warning=FALSE}
+par(mfrow=c(1,4))
+plot(x,y,pch=16,cex=1,col="orange")
+abline(ols,col="green",lwd=3)
+
+plot(num_diffx,num_diffy,pch=16,cex=0.1,col="orange",main = "")
+abline(ols_3,col="green",lwd=2)
+
+#plot(Position,VECBtildeij,pch=16,cex=0.2,col="red")
+#points(Position,titi,type="p",cex=0.75,col="green")
+
+plot(x,VECBETAi,pch=16,cex=0.75,col="red",ylim=c(minscale,maxscale))
+points(x,lu,type="p",cex=0.75,col="green",pch=16)
+points(x,ll,type="p",cex=0.75,col="green",pch=16)
+
+plot(Distance,VECBtildeij,pch=16,cex=0.2,col="red",xlab="x")
+points(Distance,du,type="p",cex=0.75,col="green",pch=16)
+points(Distance,dl,type="p",cex=0.75,col="green",pch=16)
+
+```
+
+
+```{r,echo=FALSE,warning=FALSE,fig.cap="Distribution des Beta dans le cas non-linéaire"}
+
+RES=matrix(nrow=Nmat,ncol=1)
+RES[,1]=VECBtildeij
+
+Bidon<-data.frame('myvar'=RES[,1])
+ggplot(data=Bidon, aes(Bidon$myvar)) + 
+  geom_histogram(aes(y =..density..), 
+                 col="red", 
+                 fill="green", 
+                 alpha =0.2,
+                 addDensity=TRUE) + 
+  geom_density(col=2) + 
+  labs(title="Histogram for beta") +
+  labs(x="beta", y="Count")
+```
+
+
+\newpage
+
+
+## Économétrie basée sur les différences
+
+En économétrie, il existe différentes situations où l'on a recourt aux régressions par différences entre observations, notamment avec l'estimateur de Theil-Sen ou bien l'estimateur within pour ne citer qu'eux. Avec l'essor de la technologie, et les ordinateurs qui deviennent de plus en puissant, ce raisonnement commence petit à petit à refaire surface dans l'esprit des chercheurs, et on peut s'apercevoir qu'il y a de plus en plus de papiers s'appuyant sur cette méthodologie, comme par exemple avec l'article *Estimation with Pairwise Observations* (F.Chan & L.Matyas) ou encore *Pairwise Difference Regression: A Machine Learning Meta-algorithm for Improved Prediction and Uncertainty Quantification in Chemical Search*. 
+
+### Estimateur non paramétrique / Estimateur de Theil-Sen
+
+
+Dans le cas des MCO, on fait donc la comparaison entre le point i et la moyenne de l'échantillon. 
+La méthode des moindres carrées ordinaires construit donc une droite linéaire minimisant la somme des erreurs au carré entre le nuage de point et la droite elle-même. À partir de cette hypothèse, il est évident que plus un nuage de point contient des valeurs aberrantes, plus la droite construite par les MCO sera attirée et influencée par ces points suite au processus de minimisation de l'écart entre ces derniers et la droite. 
+De surcroît, la méthode des MCO fournit des intervalles de confiance pour l'estimation des $\beta$ en suivant l'hypothèse de normalité des erreurs. Si toutefois les erreurs suivent une loi non normale, la distribution asymétrique de $\hat{\beta}$ peut rendre les inférences basées sur l'hypothèse de normalité (comme les intervalles de confiance) moins fiables. 
+
+Il devient donc nécessaire de trouver un estimateur similaire au MCO, capable d'expliquer une relation linéaire, sans pour autant être contraint de respecter ces hypothèses paramétriques. 
+En 1950, Henri Theil et E.J. Sen publient un article sur les méthodes d'estimation dans le cadre de la régression. Ils proposent une alternative aux MCO afin de déterminer la pente de droite finale dans le cadre d'une économétrie non paramétrique. La régression non paramétrique est une forme de régression où la fonction d'estimation ne prend pas une forme prédéterminée. Ainsi, ce type de régression ne repose pas sur des hypothèses paramétriques strictes concernant la forme de la distribution des erreurs. Ces modèles sont connus pour être flexibles, ils s'adaptent donc à la structure des données sans pour autant imposer une forme fonctionnelle fixe. Les coefficients estimés dans ces modèles ne suivent pas une distribution spécifique et les estimations de leurs intervalles de confiances peuvent se faire au travers de méthodes connues comme la methode de Bootstrap. 
+L'estimateur de Theil-Sen fait partie de ces estimateurs non paramétriques permettant d'éviter ces hypothèses paramétriques comme l'hypothèse de normalité des résidus ou encore l'homoscédasticité. Cet estimateur consiste à calculer les pentes entre chaques points de nos données, puis à en calculer la médiane. Il devient alors naturel de se demander la chose suivante : que se passerait-t-il si l'on décidait de comparer une observation à une autre, au lieu de la comparer à la moyenne, en répétant le processus entre chaque point de nos données. 
+
+Le principe de cet estimateur est de calculer toutes les pentes entre chaque paire de points (pour un totale de $\frac {N(N-1)}{2}$ pentes), puis de calculer la médiane des pentes. Cette méthode a deux avantages principaux. Premièrement, l'estimateur de Theil-Sen est plus robuste aux points aberrants. En effet, la moyenne est sensible aux valeurs extrêmes, ce qui peut affecter l'estimation de la pente dans le cas où il existe des points éloignés de la tendance générale. L’utilisation de la médiane, qui est une statistique d’ordre, permet d’atténuer cet effet, et rend l’estimateur de Theil beaucoup plus résistant aux valeurs aberrantes.
+
+L'estimation du coefficient se presente donc comme ceci : $$\hat{\beta} = mediane((Y_j-Y_i)/(X_j-X_i)  )$$ pour tout $i<j$ et $i = 1,2,...(n-1)$ ; $j = 2,3,...n$.
+
+Contrairement à la droite des MCO qui passe par le point moyen $(\bar{x}, \bar{y})$, la méthode de Theil-Sen exige que la droite passe obligatoirement par le point median. L'ordonnée a l'origine se voit donc attribuer la valeur suivante : $$ \hat{\beta_0} = X_{\text{med}} - \hat{\beta_1} \times X_{\text{med}}  $$  où $X_{\text{med}}$ et $Y_{\text{med}}$ sont les medianes de X et Y respectivement. Plusieurs estimations de l'ordonnée à l'origine ont été suggérées, mais celle-ci constitue l'estimation la plus robuste face à la non normalité des résidus et aux valeurs abberantes. 
+
+Deuxièmement, la méthode de Theil-Sen est non paramétrique, ce qui signifie qu'elle ne repose pas sur l'hypothèse de normalité des résidus comme c’est le cas pour les MCO. En revanche, elle peut être plus coûteuse en temps de calcul, car elle nécessite de considérer toutes les paires de points, ce qui devient lourd lorsque le jeu de données est grand. Cet estimateur a été nommé "la technique non-paramétrique la plus populaire pour estimer une tendance linéaire".
+
+L’intérêt principal de cette approche réside dans sa capacité à résister aux données aberrantes, un problème récurrent dans les applications réelles, en particulier lorsque les données sont bruitées ou comprennent des observations extrêmes. Cela en fait une alternative particulièrement intéressante aux MCO dans les contextes où la robustesse est primordiale.
+
+Notons que si l'hypothèse de normalité des erreurs est vérifiée, la méthode des MCO reste légérement plus efficace que la méthode de Theil-Sen, donnant un estimateur avec une variance plus faible. Mais si cette hypothèse est non vérifiée, utilisée la médiane des pentes s'avère bien plus efficace. 
+
+### Économétrie des données de panel : analyse par différences
+
+Raisonner par différence est chose commune dans l'économétrie des panels. C'est par exemple le cas du modèle à effets fixes, aussi appelé modèle *within* qui est un des modèles les plus populaires pour traiter des données de ce type. L'objectif de ce modèle est de permettre de controler une potentielle hétérogénéité inobservée ("effets fixes") qui serait constante dans le temps pour chaque individu afin de mesurer l'impact que chaque variable explicative peut avoir sur la variable dépendante de façon plus précise. 
+
+Le modèle *within* se présente ainsi : $$ y_{it} = \alpha_i + \beta x_{it} + \epsilon_{it} $$  Où :
+
+- \( y_{it} \) : variable dépendante pour l'individu \( i \) à la période \( t \),
+- \( \alpha_i \) : effet fixe de l'individu \( i \), constant dans le temps,
+- \( x_{it} \) : variable explicative pour l'individu \( i \) à la période \( t \),
+- \( \beta \) : coefficient à estimer, représentant l'impact de \( x_{it} \) sur \( y_{it} \),
+- \( \epsilon_{it} \) : terme d'erreur pour l'individu \( i \) à la période \( t \).
+En soustrayant la moyenne de chaque individu \( \bar{y}_i \) et \( \bar{x}_i \), nous éliminons l'effet fixe \( \alpha_i \), et nous obtenons la version transformée (centrée) du modèle :
+
+$$
+y_{it} - \bar{y}_i = \beta (x_{it} - \bar{x}_i) + (\epsilon_{it} - \bar{\epsilon}_i)
+$$
+
+Le modèle *Within* rentre donc dans le cadre des régressions par difference d'observations en se concentrant sur la variation au sein d'un même individu. En contrôlant l'hétérogénéité inobsérvée, le modèle mesure l'impact d'une variation de la variable explicative sur la variable à expliquer.\newline
+Toujours dans le cadre de l'économétrie de panel, il existe également la méthode des doubles différences (*differences in differences*), souvent utilisée dans le cadre de l'évaluation des politiques publiques, qui se base également sur un raisonnement par différence.
+
+
+\newpage
+
+# Revue de la littérature 
+
+## Estimation with Pairwise Observations (F.Chan L.Matyas)
+
+L'bjectif de cet article est d'introduire une nouvelle méthode d'estimation pour la régression linéaire. 
+Comment ? En pondérant la moyenne des pentes d'un cluster de 2 observations.
+
+
+L'idée est de regrouper les observations 2 à 2 afin d'obtenir des clusters contenant exactement 2 observations (mais une observation peut être dans plusieurs clusters).
+
+Il existe 2 moyens permettant de constituer ces groupes :
+
+  - Grouper les observations dites adjacentes (c'est à dire {$(x_{n-1}$,$y_{n-1})$;$(x_n , y_n)$}). De cette façon, on obtient donc $N-1$ cluster. Les observations peuvent être ordonnées(et donc $x_1<x_2<...<x_n$) ou non-ordonnées.
+  
+  - Grouper les observations 2 à 2 ( ${(x_i,y_i);(x_j,y_j)}$ ). Cette fois-ci, on se retrouve avec beaucoup plus de clusters ($N(N-1)/2$ pour être précis). Les observations peuvent être ordonnées ou non-ordonnées.
+  
+  
+De cette répartition des observations en cluster, on obtient une droite de régression pour chaque cluster (et donc un $\beta$ pour chaque cluster).
+Les chercheurs essayent de comprendre la relation qu'il peut exister entre ces $\beta$ et le vrai $\beta$.
+
+Les chercheurs considèrent les 2 estimateurs suivants    : 
+
+(1)  $$ \hat\beta_1 =  \frac{\sum_{i=1}^nw_i\beta_{i_1}}{\sum_{i=1}^nw_i}$$
+avec wi un certain poids. ($\beta_{i_1}$ correspond au beta du i-ème cluster).
+
+
+
+
+
+(2)  $$ \hat\beta_1= argmin \sum_{i=1}^n (w_i(\beta_{i_1}- \hat\beta_1))^2$$
+
+Les chercheurs ont donc choisi de nombreuses valeurs de $w_i$, puis ils ont fait des simulations de Monte-Carlo et ont obtenu différents résultats dépendants des valeurs de $w_i$.
+
+D'après les résultats de ces simulations, les chercheurs ont trouvé des poids wi pour lesquels leur méthode d'estimation est consistante : 
+
+
+Pour (1) : 
+
+  - Full-pairwise ordonnée avec $w_{ij}$ = $x_i - x_j$
+  - Full pairwise ordonnée avec $w_{ij}$ = $|x_i - x_j|$
+  - Full pairwise ordonnée avec $w_{ij}$ = $\sqrt{(x_i-x_j)^2 + (y_i-y_j)^2}$
+  - Full pairwise non ordonnée avec $w_{ij}$ = $|x_i - x_j|$
+  - Full pairwise non ordonnée avec $w_{ij}$ = $\sqrt{(x_i-x_j)^2 + (y_i-y_j)^2}$
+  - Adjacent non ordonnée avec $w_i$ = $|x_i - x_{i-1}|$
+  
+
+Pour (2) : 
+
+  - Full pairwise adjacent avec $w_{ij}$ = $x_i - x_j$
+  - Full pairwise non ordonnée avec $w_{ij}$ = $x_i - x_j$
+  - Adjacent non ordonnée avec $w_i$ = $x_i - x_{i-1}$
+  
+
+
+
+Tout ce qui est fait est pour $\beta_1$, mais cela peut également s'appliquer à $\beta_0$.
+
+
+Cette méthode est également généralisable au cas où il y a K variables.
+
+L'objectif principal de l'EwPO est de pouvoir tester l'endogénéité sans avoir recours à des informations extérieures telles que les variables instrumentales.
+
+3 tests sont proposés : 
+
+  - Residuals test (bien quand $\beta_0$ = 0)
+  
+$$ n^{-1} \sum_{i=1}^{n} \hat u_{i} = -\delta_n \mu_x + o_p(1)  $$
+2 solutions : tester si $\delta_n$  = 0 ou bien $\mu_x$ = 0 . En pratique $\mu_x$ différent de 0, donc on teste $\delta_n$ =0 ou pas. 
+
+  
+  
+  - Covariance test : L'hypothèse $\beta_0$ = 0 est souvent trop restrictive dans les faits, et de fait, le test sur les résidus n'est plus valide.
+  Ce test procède avec un modèle en différence, de sorte à ce qu'il n'y ait plus $\beta_0$. L'idée de ce test est de construire un modèle via l'EwPO sans variable instrumentale et de construire un modèle via l'EwPO avec la variable instrumentale que l'on souhaite utiliser et de comparer la statistique de test entre les 2 modèles. On choisira alors le modèle avec la plus petite statistique de test afin de minimiser l'endogénéité.
+  
+  
+  - "Haussman test" : Ce test est inspiré du test d'Hausman . L'idée est que si l'on choisit des poids rigoureusement, alors la différence entre le modèle estimé par MCO et le modèle estimé par
+  EwPo devrait être asymptotiquement nulle (en supposant qu'il n'y ait pas d'endogénéité). Cependant, le biais asymptotique du modèle EwPO n'est pas le même que celui des MCO sous l'hypothèse d'endogénéité, et donc leur différence n'est pas de 0.
+
+
+\newpage
+
+##  Pairwise Difference Regression: A Machine Learning Meta-algorithm for Improved Prediction and Uncertainty Quantification in Chemical Search
+
+L'intuition de raisonner par différence d'observations ne se limite pas au monde de l'économétrie. 
+L'une des approches qui en est la preuve, la méthode PADRE (pairwise difference regression) en machine learning, est conçue pour améliorer la précision des prédictions et mieux quantifier l'incertitude, en particulier dans des domaines complexes comme la chimie. Ce modèle adopte une approche innovante en se basant sur les différences entre paires de données plutôt que sur des prédictions directes à partir de points individuels, ce qui permet de réduire les erreurs systématiques et de mieux gérer les incertitudes.
+
+En chimie, la rareté des données est une chose assez courante. Dans le cas où nous disposerions de données concernant les propriétés de 4 molécules nommées A, B, C, et D, et que nous aimerions prédire les propriétés chimiques d'une nouvelle molécule inconnue nommée U. L'approche classique consisterait à entraîner le modèle sur les molécules connues avant de prédire les propriétés de n'importe quelle autre molécule. Mais cette approche n'est pas sans faiblesse.
+Le fonctionnement de la méthode PADRE repose sur la prédiction des différences entre les valeurs cibles de paires de données. Au lieu de prédire une valeur isolée pour un point de données, le modèle prédit la différence entre deux points du jeu de données, ce qui permet de mieux comprendre les relations entre ces points et de réduire les erreurs communes.
+
+Les étapes de fonctionnement de cette méthode restent assez simple : le modèle est entraîné à partir de paires de données dans un ensemble d'entraînement. Par exemple, si on a des points A, B, C, et D, PADRE forme des paires de données (A-B, A-C, B-C, etc.) et apprend à prédire les différences entre leurs valeurs cibles (variable d’intérêt) en fonction de leurs variables explicatives.
+
+Donc plutôt que de prédire directement une propriété \(y\) pour une molécule, on entraîne le modèle à prédire la différence de propriété entre deux molécules à partir des différences entre leurs variables explicatives :
+	soit une prédiction de
+	\[
+		\Delta y = y_i - y_j
+	\] à partir de
+	\[
+		\Delta x = x_i - x_j
+	\]
+Cela permet de réduire les biais et d'exploiter efficacement les relations entre les molécules.
+
+Ainsi, lorsqu'un nouveau point U est introduit, le modèle compare ce point aux points connus (comme A, B, et C) et prédit la différence entre U et chaque point de l'ensemble d'entraînement. Le modèle utilise ensuite ces différences pour prédire la valeur de U en prenant la moyenne des prédictions calculées.
+
+La moyenne des predictions se présente de la manière suivante : 
+	\[
+		\hat{y}_U = \frac{1}{n} \sum_{i=1}^n (\hat{y}_{U,i} + y_i)
+	\]
+	
+ou $\hat{y}_{U,i}$ représente la différence éstimée entre la molécule U et la molécule i, et $y_i$ étant la la valeur de la molécule i. 
+
+
+Cette méthode fournit non seulement une prédiction finale, mais aussi une estimation de l'incertitude en mesurant la dispersion entre les différences prédites, ce qui permet d'évaluer la fiabilité des résultats.
+La variance des prédictions (\(\sigma^2\)) est calculée en combinant les
+différences prédites :
+$$\sigma_u = \sqrt{\text{Var}(\hat{y}_u)} = \sqrt{\frac{1}{N} \sum_{i=1}^N (\hat{y}_{u,i} - \mu_u)^2}$$
+ou $\hat{y}_{u,i}$ represente la valeur de la molécule i (+/-) la différence entre cette même molécule et la molécule U. 
+Cette incertitude est liée à la dispersion des prédictions entre les paires et reflète la confiance du modèle.
+
+Ce modèle vient tirer son point fort d'un fait assez simple : en faisant des paires avec chaques données, il permet de transformer un petit echantillon de données en un dataset plus conséquent. Bien qu'aucune information ne soit ajouter via cette méthode, cela permets de gonfler artificiellement les données. C'est d'ailleurs l'une des raisons pour laquelle il est souvent utilisé dans le domaine de la chimie. 
+
+\newpage
+
+## Pairwise-slopes statistics for testing curvature (Jason Abrevaya et Wei Jiang)
+
+Raisonner par différence permet de tester la linéarité, la convexité ou la concavité d'une relation de façon non paramétrique. Les deux économistes préconisent pour cela de mettre en place une méthode au premier abord plutôt rudimentaire, mais dont l'efficacité n'est pas des moindres. Cette méthode consiste à procéder à plusieurs tirages aléatoires de 4 points de données à partir du nuage de points initial. À partir de ces 4 points sont formés 2 groupes : le premier groupe regroupera les deux points ayant les abscisses les plus faibles, quand le deuxième groupe réunira les deux points ayant donc les abscisses les plus élevées. S'en suit le calcul des pentes entre les deux points du premier groupe et du deuxième groupe ainsi que leur comparaison. Si la majorité des tirages montrent que la pente du groupe 1 et du groupe 2 sont identiques, l'hypothèse d'une relation linéaire est la plus probable. Si la pente du premier groupe est inférieur à la pente du deuxième groupe, l'hypothèse d'une relation convexe est majoritaire. Enfin, si la pente du groupe 1 est plus grande que la pente du groupe 2, on suppose que la relation est concave. 
+
+
+\newpage
+
+
+# Application
+
+Dans cette partie appliquée, nous allons raisonner par différences d'observations afin de voir le gain par rapport à des régressions classiques. Pour se faire, nous allons nous baser sur la base de données suivante (https://www.kaggle.com/datasets/yasserh/housing-prices-dataset/data) qui contient différentes informations ainsi que le prix de diverses maisons, et nous allons procéder de 2 manières différentes. Nous allons consacrer une partie à une approche plus économétriques, en faisant des régressions linéaires sur les données originales, mais également sur les données en différences. Tandis que l'autre partie sera consacrée à une approche par le Machine Learning, où nous allons tester différents modèles à la fois sur les données originales et sur les données en différences.
+
+## Présentation de la base de données et statistiques descriptives
+
+### Les variables
+
+Notre base de données contient 545 observations et 13 variables, à savoir : 
+
+  - Le prix (en dollars)
+  - La surface (en pieds carrés)
+  - Le nombre de chambres
+  - Le nombre de salle de bains
+  - Le nombre d'étages
+  - Si la maison est relié à une route principale
+  - Si la maison possède une chambre d'invités
+  - Si la maison possède un sous-sol
+  - Si la maison possède un chauffe-eau
+  - Si la maison possède une climatisation
+  - Le nombre de parkings
+  - Si la maison est localisé dans une zone préférée
+  - Si la maison est meublée/semi-meublée/non-meublée
+  
+  
+Pour construire notre base de données en différence, nous allons tout simplement faire la différence entre les observations i et j, pour tout i < j, ($x_i - x_j, \forall i<j$) et on obtiendra donc (545 * 544)/2 observations en différence.
+
+
+
+```{r}
+library(ggplot2)
+library(tidymodels)
+library(viridis)
+library(gridExtra)
+library(ggcorrplot)
+library(tidyverse)
+library(corrplot)
+library(kableExtra)
+library(stargazer)
+```
+
+```{r}
+library(readr)
+df <- read_csv("Housing.csv")
+```
+
+
+```{r}
+
+df$mainroad <- str_replace(df$mainroad, 'no', '0')
+df$mainroad <- str_replace(df$mainroad, 'yes', '1')
+
+
+df$guestroom <- str_replace(df$guestroom, 'no', '0')
+df$guestroom <- str_replace(df$guestroom, 'yes', '1')
+
+df$basement <- str_replace(df$basement, 'no', '0')
+df$basement <- str_replace(df$basement, 'yes', '1')
+
+
+df$hotwaterheating <- str_replace(df$hotwaterheating, 'no', '0')
+df$hotwaterheating <- str_replace(df$hotwaterheating, 'yes', '1')
+
+
+df$airconditioning <- str_replace(df$airconditioning, 'no', '0')
+df$airconditioning <- str_replace(df$airconditioning, 'yes', '1')
+
+
+df$prefarea <- str_replace(df$prefarea, 'no', '0')
+df$prefarea <- str_replace(df$prefarea, 'yes', '1')
+
+
+df$furnishingstatus <- str_replace(df$furnishingstatus, 'unfurnished', '0')
+df$furnishingstatus <- str_replace(df$furnishingstatus, 'semi-furnished', '1')
+df$furnishingstatus <- str_replace(df$furnishingstatus, 'furnished', '2')
+```
+
+
+
+```{r}
+diff_price <- c()
+diff_area <- c()
+diff_bedrooms <- c()
+diff_bathrooms <- c()
+diff_stories <- c()
+diff_mainroad <- c()
+diff_guestroom <- c()
+diff_basement<- c()
+diff_hotwaterheating <- c()
+diff_airconditioning <- c()
+diff_parking <- c()
+diff_prefarea <- c()
+diff_furnishingstatus <- c()
+```
+
+
+```{r}
+df$mainroad <- df$mainroad |> as.numeric()
+df$guestroom <- df$guestroom |> as.numeric()
+df$basement <- df$basement |> as.numeric()
+df$hotwaterheating <- df$hotwaterheating |> as.numeric()
+df$airconditioning <- df$airconditioning |> as.numeric()
+df$prefarea <- df$prefarea |> as.numeric()
+df$furnishingstatus <- df$furnishingstatus |> as.numeric()
+```
+
+
+```{r,message=FALSE,warning=FALSE,cache=TRUE}
+for (i in 1:(nrow(df)-1)) {
+  for (j in (i+1):nrow(df)) {
+    diff_price <- c(diff_price, df$price[i] - df$price[j])
+    diff_area <- c(diff_area, df$area[i] - df$area[j])
+    diff_bedrooms <- c(diff_bedrooms, df$bedrooms[i] - df$bedrooms[j])
+    diff_bathrooms <- c(diff_bathrooms, df$bathrooms[i] - df$bathrooms[j])
+    diff_stories <- c(diff_stories, df$stories[i] - df$stories[j])
+    diff_mainroad <- c(diff_mainroad, df$mainroad[i] - df$mainroad[j])
+    diff_guestroom <- c(diff_guestroom, df$guestroom[i] - df$guestroom[j])
+    diff_basement <- c(diff_basement, df$basement[i] - df$basement[j])
+    diff_hotwaterheating <- c(diff_hotwaterheating, df$hotwaterheating[i] - df$hotwaterheating[j])
+    diff_airconditioning <- c(diff_airconditioning, df$airconditioning[i] - df$airconditioning[j])
+    diff_parking <- c(diff_parking, df$parking[i] - df$parking[j])
+    diff_prefarea <- c(diff_prefarea, df$prefarea[i] - df$prefarea[j])
+    diff_furnishingstatus <- c(diff_furnishingstatus, df$furnishingstatus[i] - df$furnishingstatus[j])
+    
+  }
+}
+```
+
+
+
+```{r}
+df$mainroad <- df$mainroad |> as.factor()
+df$guestroom <- df$guestroom |> as.factor()
+df$basement <- df$basement |> as.factor()
+df$hotwaterheating <- df$hotwaterheating |> as.factor()
+df$airconditioning <- df$airconditioning |> as.factor()
+df$prefarea <- df$prefarea |> as.factor()
+df$furnishingstatus <- df$furnishingstatus |> as.factor()
+```
+
+
+```{r}
+dfdiff <- data.frame(diff_price = diff_price,
+                     diff_area = diff_area,
+                     diff_bedrooms = diff_bedrooms, 
+                     diff_bathrooms = diff_bathrooms, 
+                     diff_stories = diff_stories,
+                     mainroad = diff_mainroad,
+                     guestroom = diff_guestroom,
+                     basement = diff_basement,
+                     hotwaterheating = diff_hotwaterheating,
+                     airconditioning = diff_airconditioning,
+                     diff_parking = diff_parking,
+                     prefarea = diff_prefarea,
+                     furnishingstatus = diff_furnishingstatus)
+```
+
+```{r}
+dfdiff$mainroad <- dfdiff$mainroad |> as.factor()
+dfdiff$guestroom <- dfdiff$guestroom |> as.factor()
+dfdiff$basement <- dfdiff$basement |> as.factor()
+dfdiff$hotwaterheating <- dfdiff$hotwaterheating |> as.factor()
+dfdiff$airconditioning <- dfdiff$airconditioning |> as.factor()
+dfdiff$prefarea <- dfdiff$prefarea |> as.factor()
+dfdiff$furnishingstatus <- dfdiff$furnishingstatus |> as.factor()
+```
+
+
+```{r}
+var_num <- df[,c(1:5,11)]
+var_quali <- df[,c(6:10,12,13)]
+
+nom_var_num <- c(price = "Prix (en millions de $)",
+                 area = "Surface (en milliers de pieds carrés",
+                 bedrooms = "Nombre de chambres",
+                 bathrooms = "Nombre de salle de bain",
+                 stories = "Nombre d'étages",
+                 parking = "Nombre de places de parking")
+
+nom_var_quali <- c(mainroad = "Reliée à une route principale",
+                   guestroom = "Présence d'une chambre d'invité",
+                   basement = "Présence d'une cave",
+                   hotwaterheating = "Présence d'un chauffage à eau chaude",
+                   airconditioning = "Présence d'une climatisation",
+                   prefarea = "Située dans une zone préférée",
+                   furnishingstatus = "Meublage de la maison")
+
+var_num$price <- var_num$price / 1000000
+var_num$area <- var_num$area / 1000
+```
+
+```{r}
+table_num <- var_num %>%
+  summarise(across(everything(), list(
+    Moyenne = ~mean(.x, na.rm = TRUE),
+    Mediane = ~median(.x, na.rm = TRUE),
+    Ecart_type = ~sd(.x, na.rm = TRUE),
+    Min = ~min(.x, na.rm = TRUE),
+    Max = ~max(.x, na.rm = TRUE)
+  ), .names = "{.col}_{.fn}")) %>%
+  pivot_longer(everything(), 
+               names_to = c("Variable", ".value"), 
+               names_sep = "_")
+
+table_num$Variable <- nom_var_num[table_num$Variable]
+```
+
+
+
+```{r}
+table_cat <- var_quali %>%
+  pivot_longer(everything(), names_to = "Variable", values_to = "Valeur") %>%
+  group_by(Variable, Valeur) %>%
+  summarise(Freq = n(), .groups = "drop") %>%
+  group_by(Variable) %>%
+  mutate(Proportion = round(Freq / sum(Freq) * 100, 1)) %>%
+  arrange(Variable, desc(Proportion))
+
+table_cat$Variable <- nom_var_quali[table_cat$Variable]
+
+
+```
+
+
+\newpage
+
+### Statistiques descriptives
+
+```{r}
+kable(table_num, caption = "Statistiques descriptives – Variables numériques")
+
+kable(table_cat, caption = "Proportions par modalité – Variables qualitatives")
+```
+
+
+
+\newpage
+
+### Matrice des corrélations
+
+```{r}
+
+matrice1 = readPNG("images/matrice_de_corr.png")
+
+grid.raster((matrice1))
+```
+
+
+Toutes les variables numériques sont corrélées positivement avec le prix. De manière générale, il n'y pas de corrélation négative entre les variables numériques. On peut également noter la corrélation entre le nombre de chambres et le nombre d'étages qui semble logique.
+
+
+\newpage
+
+```{r}
+
+matrice2 = readPNG("images/matrice_de_corr_diff.png")
+
+grid.raster((matrice2))
+```
+
+Voici la matrice des corrélations pour les données en différence. On peut voir que les coefficients ne sont pas les mêmes que ceux pour les données originales. Tout les coefficients sont moins corrélés ici, mais le sens des corrélations n'a pas changé. 
+
+\newpage
+
+### Distribution des prix
+
+```{r}
+ggplot(df, aes(x = price)) + # Histogram of price
+    geom_histogram(color = "black", fill = "dodgerblue2") +
+    labs(
+        title = "Distribution des prix des maisons",
+        x = "Prix",
+        y = "Nombre"
+    ) 
+```
+
+
+
+
+### Distribution / Répartition des variables explicatives
+
+```{r}
+furnishing <- ggplot(df, aes(x = furnishingstatus)) + 
+  geom_bar(fill = c("steelblue","dodgerblue2","skyblue2"), width = 0.4) + 
+  labs(x = "Type de meublage",
+       y= "Nombre") +
+  theme_grey()
+```
+
+
+
+```{r}
+bedrooms <- ggplot(df, aes(x = bedrooms)) + 
+  geom_bar(fill = "dodgerblue2",width = 0.4) + 
+  labs(x = "Nombre de chambres",
+       y= "Nombre") +
+  theme_grey()
+```
+
+```{r}
+bathrooms <- ggplot(df, aes(x = bathrooms)) + 
+  geom_bar(fill = "dodgerblue2",width = 0.4) + 
+  labs(x = "Nombre de salle de bain",
+       y = "Nombre") +
+  theme_grey()
+```
+
+```{r}
+guestroom <- ggplot(df, aes(x = guestroom)) + 
+  geom_bar(fill = "dodgerblue2",width = 0.4) + 
+  labs(x = "Présence d'une chambre d'invité",
+       y = "Nombre") +
+  theme_grey()
+```
+
+
+```{r}
+stories <- ggplot(df, aes(x = stories)) + 
+  geom_bar(fill = "dodgerblue2",width = 0.4) + 
+  labs(x = "Nombre d'étages",
+       y = "Nombre") +
+  theme_grey()
+```
+
+
+```{r}
+basement <- ggplot(df, aes(x = basement)) + 
+  geom_bar(fill = "dodgerblue2",width = 0.4) + 
+  labs(x = "Présence d'une cave",
+       y = "Nombre") +
+  theme_grey()
+```
+
+
+
+```{r}
+mainroad <- ggplot(df, aes(x = mainroad)) + 
+  geom_bar(fill = "dodgerblue2",width = 0.4) + 
+  labs(x = "Reliée à une route principale",
+       y = "Nombre") +
+  theme_grey()
+```
+
+
+
+
+```{r}
+hotwater <- ggplot(df, aes(x = hotwaterheating)) + 
+  geom_bar(fill = "dodgerblue2",width = 0.4) + 
+  labs(x = "Présence d'un chauffe-eau",
+       y = "Nombre") +
+  theme_grey()
+```
+
+
+```{r}
+airconditioning <- ggplot(df, aes(x = airconditioning)) + 
+  geom_bar(fill = "dodgerblue2",width = 0.4) + 
+  labs(x = "Présence d'une climatisation",
+       y = "Nombre") + 
+  theme_grey()
+```
+
+```{r}
+parking <- ggplot(df, aes(x = parking)) + 
+  geom_bar(fill = "dodgerblue2",width = 0.4) + 
+  labs(x = "Nombre de places de parking",
+       y = "Nombre")+
+  theme_grey()
+```
+
+```{r}
+prefarea <- ggplot(df, aes(x = prefarea)) + 
+  geom_bar(fill = "dodgerblue2",width = 0.4) + 
+  labs(x = "Située dans une zone préférée",
+       y = "Nombre") + 
+  theme_grey()
+```
+
+
+```{r}
+grid.arrange(bedrooms,bathrooms,stories,parking,ncol = 2, nrow = 2) 
+```
+
+
+```{r}
+grid.arrange(airconditioning,basement,furnishing,hotwater,ncol = 2)
+```
+
+
+```{r}
+grid.arrange(mainroad,prefarea,guestroom,nrow = 2)
+```
+
+\newpage
+
+### Bôite à moustache sur les variables originales et en différence
+
+```{r}
+ggplot(df,aes(x=hotwaterheating,y=price,fill=hotwaterheating)) + 
+  geom_boxplot()+ 
+  labs(x = "Présence d'un chauffe eau",
+       y = "Prix")+
+  theme_grey()
+```
+
+
+
+
+```{r}
+ggplot(df,aes(x=airconditioning,y=price,fill=airconditioning)) + 
+  geom_boxplot()+
+  labs(x = "Présence d'une climatisation",
+       y = "Prix")+
+  theme_grey()
+```
+
+
+
+
+Les maisons possédant une climatisation ont tendance à avoir un prix médian plus élevé, avec une étendue de prix plus grande que les maisons qui n'ont pas de climatisation. 
+
+De même pour le maison possédant un chauffe-eau qui ont tendance à avoir un prix médian plus élevé que les maison qui n'en possèdent pas. Cependant, les maisons avec un prix extrême ont plutôt tendance à ne pas avoir de chauffe-eau.
+
+Dans les 2 cas, cela nous suggère que la présence d'une climatisation et un chauffe-eau a un impact sur le prix d'une maison.
+
+
+\newpage
+
+```{r}
+library(png)
+library(grid)
+
+boxplot_diff = readPNG("images/boxlpot_diff.png")
+
+grid.raster((boxplot_diff))
+```
+
+Lorsqu'on raisonne par différence, les variables binaires deviennent des variables à 3 modalités, ce qui implique un changement dans l'intérprétation de ces dernières. Il était jusqu'à présent évident que les maisons en zone urbaine avaient de manière générale un prix plus élevé que les maisons en zone rurale. Ce boxplot nous enseigne les choses différemment. En effet, lorsqu'on raisonne en différence, on apprend que passer d'une zone rurale a une zone urbaine entraîne une différence de prix. Dans notre cas de figure ci-dessus, la dispersion de la différence de prix est representée par le boxplot vert.  
+
+```{r}
+
+boxplot_diff1 = readPNG("images/boxplot1_diff.png")
+
+grid.raster((boxplot_diff1))
+```
+
+Dans ce deuxième cas de figure, des conclusions similaires peuvent être tirées des resultats de ces boxplot. Le principe de l'inteprétation est le même, et il est facilement remarquable que l'ajout de l'accés à la route principale d'une maison augmentera son prix de manière générale. L'ajout de cet accés entraîne une différence de prix, et la dispersion de cette différence de prix est representée par le boxplot vert. 
+
+
+\newpage
+
+## Économétrie 
+
+
+Dans cette partie, nous adoptons une approche économétrique classique fondée sur l’estimation de modèles linéaires via la méthode des moindres carrés ordinaires (MCO). L’objectif principal est d’analyser la relation entre le prix d’une maison et ses caractéristiques, à la fois sur les données originales et sur les données transformées en différences d’observations.
+
+Nous distinguons ainsi deux types d’estimations pour chaque type de données (originales et différenciées), ce qui donne lieu à quatre régressions linéaires au total. La première régression, dite univariée, consiste à expliquer le prix à partir d’une seule variable explicative : la surface. La seconde régression, dite multivariée, mobilise l’ensemble des variables explicatives disponibles (surface, nombre de pièces, localisation, etc.) pour expliquer le prix.
+
+Pour les données en différence, comme expliquée précédemment, nous allons construire une base de données artificielles pour chaque paire d’observations basée sur la différence ($y_i - y_j$) pour la variable dépendante, et ($x_i - x_j$) pour les variables explicatives, pour tout indice $i<j$ (c'est à dire qu'on ne prend qu'une fois la différence entre paire de points).
+
+Les deux régressions sur les données différenciées sont donc conçues comme suit :
+
+  - Une régression univariée de la différence de prix sur la différence de surface, permettant de mesurer l’élasticité du prix par rapport à la surface en neutralisant les biais potentiels.
+
+  - Une régression multivariée de la différence de prix sur les différences de toutes les variables explicatives, afin de capturer une relation plus complète et robuste.
+
+Cette double approche — sur données brutes et différenciées — va nous permettre de voir l'impact des covariables sur la variable dépendante, et également nous permettre de mesurer l'impact des différences de caractéristiques sur la différence de prix.
+
+\newpage
+
+```{r}
+ols1 <- lm(price~.,data=df)
+```
+
+```{r}
+ols2 <- lm(price~area,data = df)
+```
+
+
+
+```{r}
+y_true <- df$price
+y_predict_1 <- predict(ols1)
+y_predict_2 <- predict(ols2)
+```
+
+
+
+```{r,warning=FALSE,results='asis'}
+stargazer(ols1,ols2,type="latex",header = FALSE)
+```
+
+
+
+
+\newpage
+
+```{r}
+ols_diff_1 <- lm(diff_price~. , data=dfdiff)
+```
+
+```{r}
+ols_diff_2 <- lm(diff_price~diff_area, data = dfdiff)
+```
+
+
+
+```{r,results='asis'}
+stargazer(ols_diff_1,ols_diff_2, type = "latex", header = FALSE,font.size = "footnotesize")
+```
+
+
+\newpage
+
+La Table 3 regroupe les résultats des 2 régressions linéaires sur les données originales. La première régression estime la relation entre le prix et toutes les autres variables, alors que la seconde régression inclut seulement la surface comme variable explicative.
+
+Dans la régression où l'on intègre toutes les variables en tant que variables explicatives, on peut observer que le nombre de chambres est la seule variable à ne pas être significative. Toutes les autres variables sont signiicatives à 1%.
+
+On passe d'un R2 de 0.287 à 0.682 en rajoutant les autres variables explicatives en plus de la surface, ce qui nous indique l'ajout d'information de ces dernières.
+
+
+La Table 4 regroupe les résultats des 2 régressions linéaires, mais cette fois-ci, sur les données en différence. La première chose flagrante que l'on peut observer est que la différence du nombre de chambres est significatives à 1%, alors que le nombre de chambres n'était pas une variable significative avec les données originales.Il faut cependant prendre en compte le fait que la régression est estimée via la méthode des moindres carrés ordinaires, et avec l'explosion des degrés de liberté dûs au nombre d'observation qui est bien plus grand que dans les données originales, cela peut rendre significatif certains coefficients qui ne le serait pas en temps normal.
+À part cela, toutes les variables sont significatives à 1%. On peut constater que l'ajout des variables explicatives en plus de diff_area permet d'expliquer davantage la variance du modèle, puisqu'on passe d'un R2 de 0.117 avec seulement la différence de surface comme covariable à un R2 de 0.44 lorsque l'on ajoute toutes les variables disponibles. Dans ce modèle en différence, l'interprétation littérale des coefficients est un peu plus compliquée. 
+
+Prenons par exemple les coefficients associés à *hotwaterheating0* et *hotwaterheating1*. *hotwaterheating0* correspond à la différence entre 2 maisons qui ont la même valeur pour la variable hotwaterheating, donc soit la différence entre 2 maisons qui ne possèdent pas de chauffe-eau, ou soit 2 maisons qui en possèdent un. Pour *hotwaterheating1*, cela correspond à la différence entre une maison qui possède un chauffe-eau et une maison qui n'en possède pas. Et la modalité de référence est *hotwaterheating-1*, qui correspond à la différence entre une maison qui ne possède pas de chauffe-eau et une maison qui en possède un.
+
+En sachant cela, toutes choses égales par ailleurs, la différence de prix entre 2 maisons qui ont la même caractéristique concernant le chauffe-eau est de - 900 366 $ comparativement à la différence de prix entre une maison qui n'a pas de chauffe-eau et une maison qui en a un. La même logique peut s'appliquer pour les différents coefficients de la régression.
+
+
+
+\newpage
+
+```{r}
+y_diff_true <- dfdiff$diff_price
+y_diff_predict_1 <- predict(ols_diff_1)
+y_diff_predict_2 <- predict(ols_diff_2)
+```
+
+
+
+```{r}
+mae_1 <- mean(abs(y_true - y_predict_1))
+mae_2 <- mean(abs(y_true- y_predict_2))
+
+mae_diff_1 <- mean(abs(y_diff_true - y_diff_predict_1))
+mae_diff_2 <- mean(abs(y_diff_true - y_diff_predict_2))
+```
+
+
+```{r}
+rmse_1 <- sqrt(mean((y_true - y_predict_1)^2))
+rmse_2 <- sqrt(mean((y_true - y_predict_2)^2))
+  
+rmse_diff_1 <- sqrt(mean((y_diff_true - y_diff_predict_1)^2))
+rmse_diff_2 <- sqrt(mean((y_diff_true - y_diff_predict_2)^2))
+```
+
+
+```{r}
+
+R2 <- c(0.682, 0.287, 0.441, 0.117)
+MAE <- c(775054, 1172306, 963016, 1229250)
+RMSE <- c(rmse_1,rmse_2,rmse_diff_1,rmse_diff_2) |> round(0)
+
+```
+
+
+
+```{r}
+resultats <- data.frame(
+  R2 = R2,
+  MAE = MAE,
+  RMSE = RMSE,
+  row.names = c("price ~ .", "price ~ area", "diff_price ~ .", "diff_price ~ diff_area")
+)
+```
+
+
+```{r}
+kable(resultats,caption = "R2,MAE et RMSE des différentes régressions",center =TRUE)
+```
+
+Ce tableau permet de regrouper différentes métriques, à savoir le R2, l'Erreur Moyenne Absolue (MAE) et l'Ecart Quadratique Moyen (RMSE) afin de mieux visualiser les résultats des différentes régressions testées. Une chose importante à mentionner est que la variable à expliquer n'est pas la même entre les données originales et les données en différence, et par conséquent, la comparaison des différentes métriques comme le R2 est à éviter. 
+
+Cependant, on peut tout de même noter que pour les 2 approches, l'ajout des variables explicatives à disposition renforce la justesse des modèles, nous indiquant que le prix (ou la différence des prix) s'explique non seulement par la surface (ou la différence de surface), mais également par les diverses caractéristiques d'une maison.
+
+\newpage
+
+## Machine Learning
+
+L’étude du lien entre le prix des maisons et leurs caractéristiques a été réalisée à de nombreuses reprises, aboutissant à des résultats généralement cohérents. Toutefois, il demeure pertinent d’examiner si l’approche du raisonnement par différence peut être intégrée aux méthodes d’apprentissage automatique. Une telle intégration pourrait potentiellement conduire à la conception d’un modèle plus performant et plus précis que les modèles traditionnellement entraînés sur des données brutes.
+
+Dans cette perspective, l’objectif consiste à entraîner un modèle à partir d’une base de données restructurée selon le principe du raisonnement par différence, puis à analyser l’influence de cette transformation sur les performances du modèle. La méthodologie envisagée repose d’abord sur la séparation de la base de données en un ensemble d’entraînement et un ensemble de test. L’ensemble d’entraînement est ensuite modifié pour intégrer le raisonnement différentiel, sur lequel le modèle est entraîné. Les performances de ce dernier sont ensuite évaluées à l’aide des données de test.
+
+L’erreur absolue moyenne obtenue est comparée à celle d’un modèle de référence, construit à partir des mêmes données mais selon une approche classique. Cette comparaison permettra de déterminer si l’utilisation du raisonnement par différence offre un avantage en termes de précision et de robustesse dans le contexte de la prédiction des prix immobiliers.
+
+La première étape consiste donc à séparer les données en deux : une première partie pour l'entraînement du modèle et une deuxième partie pour le test du modèle sélectionné. Les deux approches, classique et en différence, auront exactement la même séparation des données pour avoir la comparaison la plus optimale et juste possible. 
+Les données d'entraînement ayant un format initial ou y (prix de la maison) dépend de X (vecteur de variables explicatives décrit plus haut) se voient transformées afin d'obtenir des différence de prix de maison en fonction de différence de variables explicatives. Ainsi on obtiens le vecteur de variables explicatives suivants : $X' = (x_i - x_j)$ et la variable cible suivante  $y' = (y_i - y_j)$, i et j étant les indices des maisons. 
+
+Une fois les données restructurées, un panel de modèle sera tester afin de déterminer quel modèle est le plus pertient et le plus précis. Dans les deux approches, les mêmes modèles seront testés afin d'avoir la comparaison la plus juste des deux modalités de raisonnement. Les modèles testés sont les regresseurs suivants : KNN, Ridge, SVR, Réseaux de neurones et Random Forest. 
+
+Dans chaque approche, les modèles s'entraînent sur les données d'entraînement et le meilleue modèle est séléctionné via un système de validation croisée. Lorsque le meilleur modèle est séléctionné, il est évalué sur les données test pour diagnostiquer un surentraînement ou sous-entraînement potentiel mais aussi pour pouvoir comparer les deux approches et détérminer laquelles est la plus performantes dans notre cas de figure. 
+
+Dans l'approche classique, le modèle le plus performant s'est avéré être le modèle KNN, avec comme paramètres otpimisés : le nombre de voisins, la pondération attribuée à chaques voisins et la métrique de distance choisi (euclidienne ou manhattan). La MAE de ce modèle sur les données test est de 938602,55. 
+
+Dans l'approche en différence, le meilleur modèle s'avère être le modèle Random Forest avec comme paramètres optimisés : le nombre d'arbre, la profondeur de chacuns des arbres, le nombre minimum de maison avant la divison d'un noeud et enfin le nombre minimum de maison dans chaque feuille. La MAE de ce modèle sur les données test est de 881780,7.
+
+Pour tester ce modèle sur les données test, il est nécessaire de faire des paires de maisons entre chaque maisons des données test et les maisons des données d'entraînement. Prenons le cas d'une maison qu'on nommera la "maison U".  Une fois les paires effectuées entre la maison U et les maisons de nos données d'entraînement, le modèle ayant appris sur des differences va pouvoir prédire la difference entre la maison U et chaques maisons des données d'entraînement. Une fois ces predictions efféctuées, il est facilement determiné un prix de référence pour la maison U en fonction de chacunes de maisons des données d'entraînement. De manière assez intuitive, si la maison U est préditre comment étant plus grande que la maison 1 de 10 000 dollars, et que la maison 1 a une valeur de 200 000 dollars, la maison U sera predite à 210 000 dollars. Ce processus est répété pour chaque pour chaque comparaison entre la maison U et les maisons de nos données d'entraînement. Une fois le processus pour la maison U terminé, il est nécessaire de recommencer le processus pour chacunes des maisons de nos données test.
+La prediction final pour la maison U serait donc la moyenne de toute les predictions faites pour cette même maison. Ainsi, la formule de prédiction du prix de la maison U deviens : $\hat{y}_U = \frac{1}{n} \sum_{i=1}^n (\hat{y}_{U,i} + y_i)$ avec $\hat{y}_{U,i}$ étant la différence de prix entre la maison U et la maison i et $y_i$ étant le prix de la maison i(i étant l'indice des maisons des données d'entraînement).
+
+Voici un tableau comparatif des modèles de chacune des approche, ainsi que la valeur de leur scoring : 
+
+
+```{r}
+tableau = readPNG("images/tableau.png")
+
+grid.raster((tableau))
+```
+
+Le modèle KNN a été le meilleur modèle dans l'approche classique. Il reste cependant important de noter que dans l'approche en différence le modèle KNN, malgrès qu'il ai une MAE plus élevée que le modèle Random Forest, obtiens tout de même une MAE plus faible que le modèle KNN dans l'approche classique. 
+
+Après comparaison, raisonner par différence s'avère donner un modèle avec une erreur moyenne absolue plus faible, ce qui nous ammène à conclure que dans notre cas de figure, ce raisonnement par différence a contribuer a donner un modèle plus performant pour la prédiction du prix des maisons en fonctions de leurs caractéristiques.  
+
+
+
+
+
+
+  
+\newpage  
+
+
+
+##Conclusion
+
+L’intégration du raisonnement par différence dans les méthodes de machine learning appliquées à la prédiction des prix immobiliers semble prometteuse. Les résultats obtenus indiquent une amélioration notable de la précision des estimations par rapport aux modèles classiques. Cette approche permet au modèle de mieux capter les variations locales  entre les observations, ce qui se traduit par une réduction de l’erreur moyenne absolue. Ainsi, le raisonnement par différence apparaît comme un levier pertinent pour affiner les prédictions dans des contextes où les relations entre variables sont complexes. Ces résultats ouvrent la voie à de nouvelles pistes méthodologiques en machine learning, reposant sur des logiques comparatives plutôt que purement descriptives. Une généralisation de cette approche à d’autres domaines pourrait en renforcer la portée et l’efficacité.
+
+
+
+
+
+
+
+
+
+
+
+
+
+\newpage
+
+# Bibliographie
+
+Estimation with Pairwise Observations (F.Chan & L.Matyas)  
+Pairwise-slopes statistics for testing curvature (Jason Abreyava & Wei Jiang), Decembre 2001.  
+Pairwise Difference Regression: A Machine Learning Meta-algorithm for Improved Prediction and Uncertainty Quantification in Chemical Search (Micheal Tynes, Wenhao Gao, Daniel J. Burill, Enrique R.Batista, Danny Perez, Ping Yang et Nicholas Lubbers).  
+
+
